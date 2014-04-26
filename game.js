@@ -1,45 +1,51 @@
-var terrain, water, fish;
+var terrain, water, fish, viewport;
+
+function Fish(options) {
+    options = options || {};
+    options.image = 'images/fish.png';
+    options.anchor = 'center';
+    jaws.Sprite.call(this, options);
+    this.gravity = 0.5;
+    this.jumpv = 4;
+    this.swimv = 1;
+    this.vy = 0;
+    this.max_vy = 7;
+    this.min_vy = -10;
+    this.vx = 0;
+}
+inherits(Fish, jaws.Sprite);
+Fish.prototype.depth= function () {
+    var d = fish.y - water.y;
+    return d > 0 ? d : 0;
+};
+Fish.prototype.vdamp = function () {
+    return fish.depth() ? 0.4 : 1;
+};
+Fish.prototype.rect = function () {
+    return new jaws.Rect(fish.x - 7, fish.y - 4, 14, 8);
+};
+Fish.prototype.inWater = function () {
+    return jaws.collide(fish, water);
+};
+
+
 var Game = function () {
     this.setup = function () {
         scaleSetup(2);
         water = jaws.Sprite({
             color: 'blue',
-            x:0,
+            x: 0,
             y: jaws.height - 120,
-            width: 320,
+            width: 2000,
             height: 120,
         });
-        terrain = jaws.PixelMap({ image: 'images/map2.png' })
-        fish = jaws.Sprite({
-            color: 'green',
-            x: 10,
-            y: jaws.height - 80,
-            width: 8,
-            height: 8
-        });
-        fish.gravity = 0.5;
-        fish.jumpv = 4;
-        fish.swimv = 1;
-        fish.vy = 0;
-        fish.max_vy = 7;
-        fish.min_vy = -10;
-        fish.vx = 0;
-        fish.inWater = function () {
-            return jaws.collide(fish, water);
-        };
-        fish.depth = function () {
-            var d = fish.y - water.y;
-            return d > 0 ? d : 0;
-        };
-        fish.vdamp = function () {
-            // var damp = 0.02 * fish.depth();
-            // return damp <= 0.8 ? 1 - damp : 0.2;
-            // return fish.depth() ? 0.4 : 1;
-            return fish.depth() ? 0.4 : 1;
-        };
+        terrain = jaws.PixelMap({ image: 'images/map3.png' })
+        fish = new Fish({ x: 400, y: jaws.height - 80 });
+        viewport = new jaws.Viewport({ max_x: terrain.width, max_y: terrain.height });
     };
 
     this.update = function () {
+        fish.vx = 0;
         if (jaws.pressed("up") && !fish.jumping && !fish.depth()) {
             fish.vy -= fish.jumpv;
             fish.jumping = true;
@@ -49,19 +55,16 @@ var Game = function () {
             fish.vy -= 1;
             if (fish.vy < fish.min_vy * fish.vdamp()) fish.vy = fish.min_vy * fish.vdamp();
         }
-        // if (fish.vy <= fish.max_vy * fish.vdamp()) {
-        //     fish.vy += fish.gravity;
-        // } else {
-        //     fish.vy -= 0.5;
-        // }
         fish.vy += fish.gravity;
         if (fish.vy > fish.max_vy * fish.vdamp()) fish.vy = fish.max_vy * fish.vdamp();
 
         if (jaws.pressed("left") && (fish.jumping || fish.inWater())) {
             fish.vx -= fish.swimv;
+            fish.flipped = true;
         }
         if (jaws.pressed("right") && (fish.jumping || fish.inWater())) {
             fish.vx += fish.swimv;
+            fish.flipped = false;
         }
 
         var collision = fish.stepWhile(fish.vx, fish.vy * fish.vdamp(), function (fish) {
@@ -73,14 +76,19 @@ var Game = function () {
         }
         if (collision.x) {
         }
-        fish.vx = 0;
     };
 
     this.draw = function () {
         jaws.clear();
-        water.draw();
-        terrain.draw();
-        fish.draw();
+        viewport.centerAround(fish);
+        viewport.apply(function () {
+            water.draw();
+            terrain.draw();
+            // var sign = fish.flipped ? -1 : 1;
+            // fish.rotateTo(sign * 180/Math.PI * Math.atan2(fish.vy, fish.vx));
+            fish.draw();
+            // fish.rect().draw();
+        });
     };
 };
 
@@ -88,6 +96,8 @@ jaws.onload = function () {
     jaws.assets.add([
         'images/map1.png',
         'images/map2.png',
+        'images/map3.png',
+        'images/fish.png',
     ]);
 
 
