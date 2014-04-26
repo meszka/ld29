@@ -90,7 +90,7 @@ var Game = function () {
             width: 2000,
             height: 120,
         });
-        terrain = new jaws.PixelMap({ image: 'images/map3.png' })
+        terrain = new jaws.PixelMap({ image: 'images/map4.png' })
         fish = new Fish({ x: 400, y: jaws.height - 110 });
         viewport = new jaws.Viewport({ max_x: terrain.width, max_y: terrain.height });
         oxygen_label = new jaws.Text({ x: 5, y: 5 })
@@ -106,11 +106,11 @@ var Game = function () {
         if (fish.dead) return;
 
         fish.vx = 0;
-        if (jaws.pressed('up') && !fish.jumping && !fish.depth()) {
+        if (!jaws.pressed('down') && !fish.jumping && !fish.depth()) {
             fish.vy -= fish.jumpv;
             fish.jumping = true;
         }
-        if (jaws.pressed('up') && fish.depth()) {
+        if (!jaws.pressed('down') && fish.depth()) {
             fish.jumping = false;
             fish.vy -= 1;
             if (fish.vy < fish.min_vy * fish.vdamp()) fish.vy = fish.min_vy * fish.vdamp();
