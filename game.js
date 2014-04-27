@@ -18,7 +18,7 @@ function Fish(options) {
     options.anchor = 'center';
     jaws.Sprite.call(this, options);
     this.gravity = 0.5;
-    this.jumpv = 4;
+    this.jumpv = 4.5;
     this.swimv = 1.5;
     this.vy = 0;
     this.max_vy = 6;
@@ -195,6 +195,9 @@ Fish.prototype.die = function () {
     fish.rotateTo(180);
     death_sound.play();
 };
+Fish.prototype.win = function () {
+    jaws.switchGameState(End, {fps: fps});
+};
 
 function Human(options) {
     options = options || {};
@@ -220,6 +223,10 @@ Human.prototype.die = function () {
     this.rotateTo(90);
     this.house.human_limit++;
     this.house.humans_dead++;
+
+    if (n_humans - fish.kills - fish.drowns == 0) {
+        fish.win();
+    }
 };
 // Human.prototype.rect = function () {
 //     if (!this.drowned)
@@ -240,7 +247,6 @@ Human.prototype.update = function () {
 
     if (this.drowned) return;
     if (this.depth() > 2) {
-        // console.log("AAAAA!");
         this.die();
         fish.drowns += 1;
         drown_sound.play();
@@ -278,8 +284,8 @@ Human.prototype.hit = function () {
         this.setImage(frames[frames.length - 1])
         this.die();
         fish.kills += 1;
-        if (fish.kills % 5 == 0) {
-            fish.max_oxygen++;
+        if (fish.kills % 3 == 0) {
+            fish.max_oxygen += 1000;
             yum_sound.play();
         }
     }
@@ -313,7 +319,7 @@ function House(options) {
     this.max_vy = 7;
     this.time = 0;
     this.spawn_time = 1500;
-    this.spawn_limit = 6;
+    this.spawn_limit = 5;
     this.human_limit = 3;
     this.humans_dead = 0;
 }
@@ -326,10 +332,10 @@ House.prototype.spawn = function () {
     h.setImage(h.sprite_sheet.frames[r]);
     humans.push(h);
 };
-House.prototype.draw = function () {
-    jaws.Sprite.prototype.draw.call(this);
-    this.rect().draw();
-};
+// House.prototype.draw = function () {
+//     jaws.Sprite.prototype.draw.call(this);
+//     this.rect().draw();
+// };
 House.prototype.update = function () {
     this.vy += this.gravity;
 
@@ -360,14 +366,66 @@ House.prototype.update = function () {
 };
 
 var Setup = function () {
+    var screens = jaws.SpriteSheet({
+        image: 'images/screens.png',
+        frame_size: [160, 120],
+        scale_image: 2,
+    });
+    var s = new jaws.Sprite({ x:0, y: 0 });
+    var s_n = 0;
     this.setup = function () {
         scaleSetup(2);
-        jaws.switchGameState(Game, {fps: fps});
+        s.setImage(screens.frames[0]);
     };
     this.update = function () {
+        if (jaws.pressedWithoutRepeat('x')) {
+            s_n++;
+            if (s_n == 3) {
+                jaws.switchGameState(Game, {fps: fps});
+            } else {
+                s.setImage(screens.frames[s_n]);
+            }
+        }
     };
     this.draw = function () {
+        jaws.clear();
+        s.draw();
     };
+};
+
+var msg;
+var End = function () {
+    var screens = jaws.SpriteSheet({
+        image: 'images/screens.png',
+        frame_size: [160, 120],
+        scale_image: 2,
+    });
+    var s = new jaws.Sprite({ x:0, y: 0 });
+    this.setup = function () {
+        msg = new jaws.Text({ x: 5, y: 160, width: 315, height: 160, wordWrap: true });
+        msg.text = "That sure was a fun day, wasn't it Drill Fish? "
+        if (fish.kills == n_humans) {
+            msg.text += "You got to eat all the tasty snacks!";
+        }
+        else if (fish.kills) {
+            msg.text += "You ate " + fish.kills + " tasty snacks. "
+        }
+        if (fish.drowns) {
+            msg.text += "Though it's a shame " + fish.drowns + " snacks fell into the water..."
+        }
+        s.setImage(screens.frames[3]);
+    };
+    this.update = function () {
+        if (jaws.pressedWithoutRepeat('x')) {
+            jaws.switchGameState(Game, {fps: fps});
+        }
+    };
+    this.draw = function () {
+        jaws.clear();
+        s.draw();
+        msg.draw();
+    };
+    
 };
 var Game = function () {
 
@@ -418,7 +476,7 @@ var Game = function () {
     };
 
     this.update = function () {
-        if (!fish.dead) time += 1000 / fps;
+        // if (!fish.dead) time += 1000 / fps;
         fish.update();
         jaws.update(houses);
         jaws.update(humans);
@@ -478,6 +536,7 @@ jaws.onload = function () {
         'images/dig_mask.png',
         'images/blood.png',
         'images/house.png',
+        'images/screens.png',
         afile('sounds/drill'),
         afile('sounds/tick'),
         afile('sounds/death'),
