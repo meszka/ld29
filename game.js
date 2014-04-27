@@ -1,5 +1,5 @@
 var fps = 30;
-var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list = [];
+var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list;
 
 function removeDead(objects) {
     for (var i in objects) {
@@ -49,6 +49,107 @@ Fish.prototype.dig = function () {
     c.drawImage(jaws.assets.get('images/dig_mask.png'), this.x - 8 + this.vx, this.y - 8 + this.vy);
     c.restore();
     terrain.update()
+};
+Fish.prototype.move = function () {
+    return fish.stepWhile(fish.vx, fish.vy * fish.vdamp(), function (fish) {
+        return !terrain.solidAtRect(fish.rect())
+    });
+};
+Fish.prototype.update = function () {
+        fish.vy += fish.gravity;
+        fish.vx /= 2;
+        if (fish.dead) {
+            fish.move();
+            if (jaws.pressed('r')) {
+                jaws.switchGameState(Game);
+            }
+            return;
+        }
+
+        var sign = fish.flipped ? -1 : 1;
+        var x = fish.flipped ? 1 : 0;
+        if (fish.vy != 0) {
+            fish.rotateTo(x*180 + sign * 180/Math.PI * Math.atan2(sign * fish.vy, fish.vx));
+        }
+
+        if (jaws.pressed('up') && !fish.jumping && !fish.depth()) {
+            fish.vy -= fish.jumpv;
+            fish.jumping = true;
+        }
+        if (jaws.pressed('up') && fish.depth()) {
+            fish.jumping = false;
+            fish.vy -= 1;
+            if (fish.vy < fish.min_vy * fish.vdamp()) fish.vy = fish.min_vy * fish.vdamp();
+        }
+
+        if (fish.vy > fish.max_vy * fish.vdamp()) fish.vy = fish.max_vy * fish.vdamp();
+
+        if (jaws.pressed('left')) {
+            if (fish.inWater()) {
+                fish.vx -= fish.swimv;
+            }
+            if (fish.jumping) {
+                fish.vx -= 1;
+            }
+            fish.flipped = true;
+        }
+        if (jaws.pressed('right')) {
+            if (fish.inWater()) {
+                fish.vx += fish.swimv;
+            }
+            if (fish.jumping) {
+                fish.vx += 1;
+            }
+            fish.flipped = false;
+        }
+
+        if (fish.digs == 0) {
+            if (fish.digs_delay > 0) {
+                fish.digs_delay -= 1000/fps;
+                if (fish.digs_delay < 0) fish.digs_delay = 0;
+            } else {
+                fish.digs = fish.max_digs;
+            }
+        }
+
+        var collision = fish.move();
+        if (jaws.pressed('x')) {
+            if (fish.digs == 0) console.log('tick');
+            else if (collision.x || collision.y) {
+                fish.dig();
+                fish.digs--;
+                if (fish.digs == 0) fish.digs_delay = fish.digs_delay_s;
+            }
+        } else {
+            if (fish.digs > fish.max_digs) fish.digs = fish.max_digs;
+            if (collision.y) {
+                fish.vy = 0;
+                fish.jumping = false;
+            }
+        }
+
+        if (fish.inWater()) {
+            fish.oxygen += 2000 / fps;
+            if (fish.oxygen > fish.max_oxygen) fish.oxygen = fish.max_oxygen;
+        } else {
+            fish.oxygen -= 1000 / fps;
+            if (fish.oxygen < 0) {
+                fish.oxygen = 0;
+                this.die();
+            }
+        }
+
+        var hit = false;
+        jaws.collide(fish, humans, function (fish, human) {
+            if (human.drowned) return;
+            human.hit(); 
+            hit = true;
+        });
+       if (hit) fish.vy -= 1;
+};
+Fish.prototype.die = function () {
+    fish.dead = true;
+    fish.rotateTo(180);
 };
 
 function Human(options) {
@@ -128,14 +229,19 @@ Blood.prototype.update = function () {
     this.setImage(this.animation.next())
 };
 
-var Game = function () {
-
-    function death() {
-        fish.dead = true;
-    };
-
+var Setup = function () {
     this.setup = function () {
         scaleSetup(2);
+        jaws.switchGameState(Game, {fps: fps});
+    };
+    this.update = function () {
+    };
+    this.draw = function () {
+    };
+};
+var Game = function () {
+
+    this.setup = function () {
         water = new jaws.Sprite({
             color: 'blue',
             x: 0,
@@ -154,90 +260,11 @@ var Game = function () {
             new Human({ x: 550, y: 50 }),
             new Human({ x: 600, y: 50 }),
         ];
+        blood_list = [];
     };
 
     this.update = function () {
-        if (fish.dead) return;
-
-        fish.vx /= 2;
-        if (jaws.pressed('up') && !fish.jumping && !fish.depth()) {
-            fish.vy -= fish.jumpv;
-            fish.jumping = true;
-        }
-        if (jaws.pressed('up') && fish.depth()) {
-            fish.jumping = false;
-            fish.vy -= 1;
-            if (fish.vy < fish.min_vy * fish.vdamp()) fish.vy = fish.min_vy * fish.vdamp();
-        }
-
-        fish.vy += fish.gravity;
-        if (fish.vy > fish.max_vy * fish.vdamp()) fish.vy = fish.max_vy * fish.vdamp();
-
-        if (jaws.pressed('left')) {
-            if (fish.inWater()) {
-                fish.vx -= fish.swimv;
-            }
-            if (fish.jumping) {
-                fish.vx -= 1;
-            }
-            fish.flipped = true;
-        }
-        if (jaws.pressed('right')) {
-            if (fish.inWater()) {
-                fish.vx += fish.swimv;
-            }
-            if (fish.jumping) {
-                fish.vx += 1;
-            }
-            fish.flipped = false;
-        }
-
-        if (fish.digs == 0) {
-            if (fish.digs_delay > 0) {
-                fish.digs_delay -= 1000/fps;
-                if (fish.digs_delay < 0) fish.digs_delay = 0;
-            } else {
-                fish.digs = fish.max_digs;
-            }
-        }
-
-        var collision = fish.stepWhile(fish.vx, fish.vy * fish.vdamp(), function (fish) {
-           return !terrain.solidAtRect(fish.rect())
-        });
-        if (jaws.pressed('x')) {
-            if (fish.digs == 0) console.log('tick');
-            else if (collision.x || collision.y) {
-                fish.dig();
-                fish.digs--;
-                if (fish.digs == 0) fish.digs_delay = fish.digs_delay_s;
-            }
-        } else {
-            if (fish.digs > fish.max_digs) fish.digs = fish.max_digs;
-            if (collision.y) {
-                fish.vy = 0;
-                fish.jumping = false;
-            }
-        }
-
-        if (fish.inWater()) {
-            fish.oxygen += 2000 / fps;
-            if (fish.oxygen > fish.max_oxygen) fish.oxygen = fish.max_oxygen;
-        } else {
-            fish.oxygen -= 1000 / fps;
-            if (fish.oxygen < 0) {
-                fish.oxygen = 0;
-                // death();
-            }
-        }
-
-        var hit = false;
-        jaws.collide(fish, humans, function (fish, human) {
-            if (human.drowned) return;
-            human.hit(); 
-            hit = true;
-        });
-       if (hit) fish.vy -= 1;
-
+        fish.update();
         oxygen_label.text = Math.ceil(fish.oxygen/1000).toString();
         digs_label.text = Math.ceil(fish.digs_delay/1000).toString();
         jaws.update(humans);
@@ -253,11 +280,6 @@ var Game = function () {
             terrain.draw();
             jaws.draw(humans);
             jaws.draw(blood_list);
-            var sign = fish.flipped ? -1 : 1;
-            var x = fish.flipped ? 1 : 0;
-            if (fish.vy != 0) {
-                fish.rotateTo(x*180 + sign * 180/Math.PI * Math.atan2(sign * fish.vy, fish.vx));
-            }
             fish.draw();
             // fish.rect().draw();
         });
@@ -284,7 +306,7 @@ jaws.onload = function () {
         jaws.Text.prototype.default_options.fontFace = 'font04b03';
         jaws.Text.prototype.default_options.fontSize = 16;
         jaws.Text.prototype.default_options.textBaseline = 'top';
-        jaws.start(Game, { fps: fps });
+        jaws.start(Setup, { fps: fps });
     };
     font.fontFamily = 'font04b03';
     font.src = '04B_03__.TTF';
