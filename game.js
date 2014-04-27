@@ -1,6 +1,7 @@
 var fps = 30;
 var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list, kills_label,
-    drowns_label, drill_sound, tick_sound, death_sound, jump_sound, splash_sound;
+    drowns_label, drill_sound, tick_sound, death_sound, jump_sound, splash_sound,
+    hit_sound, reload_sound, timer_sound, houses, msg_label, yum_sound, drown_sound;
 
 function removeDead(objects) {
     for (var i in objects) {
@@ -128,6 +129,7 @@ Fish.prototype.update = function () {
                 if (fish.digs_delay < 0) fish.digs_delay = 0;
             } else {
                 fish.digs = fish.max_digs;
+                reload_sound.play();
             }
         }
 
@@ -153,13 +155,20 @@ Fish.prototype.update = function () {
         }
 
         if (fish.inWater()) {
-            fish.oxygen += 3000 / fps;
-            if (fish.oxygen > fish.max_oxygen) fish.oxygen = fish.max_oxygen;
+            // fish.oxygen += 3000 / fps;
+            // if (fish.oxygen > fish.max_oxygen) fish.oxygen = fish.max_oxygen;
+            fish.oxygen = fish.max_oxygen;
         } else {
+            var old_oxygen = fish.oxygen;
             fish.oxygen -= 1000 / fps;
             if (fish.oxygen < 0) {
                 fish.oxygen = 0;
                 this.die();
+                msg_label.text = "press R to restart"
+            } else {
+                if (Math.ceil(old_oxygen/1000) > Math.ceil(fish.oxygen/1000)) {
+                    timer_sound.play();
+                }
             }
         }
 
@@ -175,6 +184,7 @@ Fish.prototype.update = function () {
         jaws.collide(fish, humans, function (fish, human) {
             if (human.drowned) return;
             human.hit(); 
+            hit_sound.play();
             hit = true;
         });
        if (hit) fish.vy -= 1;
@@ -187,7 +197,6 @@ Fish.prototype.die = function () {
 
 function Human(options) {
     options = options || {};
-    options.image = 'images/human.png';
     options.anchor = 'center';
     jaws.Sprite.call(this, options);
     this.vx = 1;
@@ -196,19 +205,20 @@ function Human(options) {
     this.max_vy = 7;
     this.max_climb = 2;
     this.hp = 10;
+    this.sprite_sheet = new jaws.SpriteSheet({ image: 'images/human.png', frame_size: [8,16] })
 }
 inherits(Human, jaws.Sprite);
 Human.prototype.depth = Fish.prototype.depth;
 Human.prototype.die = function () {
     this.vx = 0;
+    this.vy = 0;
     this.drowned = true;
     this.setAnchor('bottom_center')
-    this.rotateTo(90);
+    var angle = this.flipped ? 270 : 90;
+    this.rotateTo(angle);
+    // this.house.human_limit++;
+    this.house.humans_dead++;
 };
-// Human.prototype.draw = function () {
-//     jaws.Sprite.prototype.draw.call(this);
-//     this.rect().draw();
-// };
 Human.prototype.rect = function () {
     if (!this.drowned)
         return jaws.Sprite.prototype.rect.call(this);
@@ -218,6 +228,7 @@ Human.prototype.rect = function () {
 Human.prototype.update = function () {
     this.vy += this.gravity;
 
+    this.flipped = this.vx < 0;
     var collision = this.stepWhile(this.vx, this.vy, function (obj) {
         return !terrain.solidAtRect(obj.rect());
     });
@@ -227,9 +238,10 @@ Human.prototype.update = function () {
 
     if (this.drowned) return;
     if (this.depth() > 2) {
-        console.log("AAAAA!");
+        // console.log("AAAAA!");
         this.die();
         fish.drowns += 1;
+        drown_sound.play();
         return;
     }
 
@@ -260,8 +272,11 @@ Human.prototype.hit = function () {
     blood_list.push(b);
     this.hp -= 1;
     if (this.hp == 0) {
+        var frames = this.sprite_sheet.frames;
+        this.setImage(frames[frames.length - 1])
         this.die();
         fish.kills += 1;
+        yum_sound.play();
     }
 };
 
@@ -281,6 +296,56 @@ Blood.prototype.update = function () {
         this.dead = true;
     }
     this.setImage(this.animation.next())
+};
+
+function House(options) {
+    options = options || {};
+    options.image = 'images/house.png';
+    options.anchor = 'center';
+    jaws.Sprite.call(this, options);
+    this.vy = 0;
+    this.gravity = 0.5;
+    this.max_vy = 7;
+    this.time = 0;
+    this.spawn_time = 3000;
+    this.human_limit = 5;
+    this.humans_dead = 0;
+}
+inherits(House, jaws.Sprite);
+House.prototype.spawn = function () {
+    var h = new Human({ x: this.x, y: this.y + 6 });
+    h.house = this;
+    h.vx = Math.round(Math.random()) > 0 ? 1 : -1;
+    var r = Math.floor(Math.random() * (h.sprite_sheet.frames.length - 1));
+    h.setImage(h.sprite_sheet.frames[r]);
+    humans.push(h);
+};
+House.prototype.update = function () {
+    this.vy += this.gravity;
+
+    var collision = this.stepWhile(0, this.vy, function (obj) {
+        return !terrain.solidAtRect(obj.rect());
+    });
+    if (collision.y) {
+        this.vy = 0;
+    }
+
+    if (this.dead) return;
+
+    this.time += 1000 / fps;
+    if (this.time >= this.spawn_time) {
+        this.time = 0;
+        if (this.human_limit) {
+            this.spawn();
+            this.human_limit--;
+        }
+    }
+
+    if (this.humans_dead >= 5) {
+        this.dead = true;
+        this.setAnchor('bottom_center');
+        this.rotateTo(90);
+    }
 };
 
 var Setup = function () {
@@ -306,15 +371,15 @@ var Game = function () {
         terrain = new jaws.PixelMap({ image: 'images/map4.png' })
         fish = new Fish({ x: 400, y: jaws.height - 100 });
         viewport = new jaws.Viewport({ max_x: terrain.width, max_y: terrain.height });
-        oxygen_label = new jaws.Text({ x: 5, y: 5 })
-        digs_label = new jaws.Text({ x: 300, y: 5 })
-        kills_label = new jaws.Text({ x: 140, y: 5, color: 'DarkRed' })
-        drowns_label = new jaws.Text({ x: 160, y: 5, color: 'blue' })
+        oxygen_label = new jaws.Text({ x: 5, y: 5 });
+        digs_label = new jaws.Text({ x: 300, y: 5 });
+        kills_label = new jaws.Text({ x: 140, y: 5, color: 'DarkRed' });
+        drowns_label = new jaws.Text({ x: 160, y: 5, color: 'blue' });
+        msg_label = new jaws.Text({ x: 5, y: jaws.height - 20 });
 
-        humans = [
-            new Human({ x: 500, y: 50 }),
-            new Human({ x: 550, y: 50 }),
-            new Human({ x: 600, y: 50 }),
+        humans = [];
+        houses = [
+            new House({ x: 540, y: 50 }),
         ];
         blood_list = [];
 
@@ -323,6 +388,11 @@ var Game = function () {
         death_sound = jaws.assets.get(afile('sounds/death'));
         jump_sound = jaws.assets.get(afile('sounds/jump'));
         splash_sound = jaws.assets.get(afile('sounds/splash'));
+        hit_sound = jaws.assets.get(afile('sounds/hit'));
+        reload_sound = jaws.assets.get(afile('sounds/reload'));
+        timer_sound = jaws.assets.get(afile('sounds/timer'));
+        yum_sound = jaws.assets.get(afile('sounds/yum'));
+        drown_sound = jaws.assets.get(afile('sounds/drown'));
     };
 
     this.update = function () {
@@ -331,6 +401,7 @@ var Game = function () {
         digs_label.text = Math.ceil(fish.digs_delay/1000).toString();
         kills_label.text = fish.kills.toString();
         drowns_label.text = fish.drowns.toString();
+        jaws.update(houses);
         jaws.update(humans);
         jaws.update(blood_list);
         removeDead(blood_list);
@@ -342,6 +413,7 @@ var Game = function () {
         viewport.apply(function () {
             water.draw();
             terrain.draw();
+            jaws.draw(houses);
             jaws.draw(humans);
             jaws.draw(blood_list);
             fish.setImage(fish.anim.next());
@@ -355,6 +427,7 @@ var Game = function () {
         digs_label.draw();
         kills_label.draw();
         drowns_label.draw();
+        msg_label.draw();
     };
 };
 
@@ -369,11 +442,17 @@ jaws.onload = function () {
         'images/human.png',
         'images/dig_mask.png',
         'images/blood.png',
+        'images/house.png',
         afile('sounds/drill'),
         afile('sounds/tick'),
         afile('sounds/death'),
         afile('sounds/jump'),
         afile('sounds/splash'),
+        afile('sounds/hit'),
+        afile('sounds/reload'),
+        afile('sounds/timer'),
+        afile('sounds/yum'),
+        afile('sounds/drown'),
     ]);
 
 
