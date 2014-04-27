@@ -1,5 +1,13 @@
 var fps = 30;
-var terrain, water, fish, viewport, oxygen_label;
+var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list = [];
+
+function removeDead(objects) {
+    for (var i in objects) {
+        if (objects[i].dead) {
+            objects.splice(i, 1); // remove element
+        }
+    }
+}
 
 function Fish(options) {
     options = options || {};
@@ -10,7 +18,7 @@ function Fish(options) {
     this.jumpv = 4;
     this.swimv = 2;
     this.vy = 0;
-    this.max_vy = 7;
+    this.max_vy = 6;
     this.min_vy = -10;
     this.vx = 0;
     this.oxygen = 5000;
@@ -22,7 +30,7 @@ function Fish(options) {
 }
 inherits(Fish, jaws.Sprite);
 Fish.prototype.depth= function () {
-    var d = fish.y - water.y;
+    var d = this.y - water.y;
     return d > 0 ? d : 0;
 };
 Fish.prototype.vdamp = function () {
@@ -45,7 +53,8 @@ Fish.prototype.dig = function () {
 
 function Human(options) {
     options = options || {};
-    options.image = 'images/human.png'
+    options.image = 'images/human.png';
+    options.anchor = 'center';
     jaws.Sprite.call(this, options);
     this.vx = 1;
     this.vy = 0;
@@ -54,18 +63,28 @@ function Human(options) {
     this.max_climb = 2;
 }
 inherits(Human, jaws.Sprite);
+Human.prototype.depth = Fish.prototype.depth;
 Human.prototype.update = function () {
     this.vy += this.gravity;
 
+    if (this.drowned) return;
+    if (this.depth() > 2) {
+        console.log("AAAAA!");
+        this.drowned = true;
+        this.setAnchor('bottom_center')
+        this.rotateTo(90);
+        return;
+    }
+
     var collision = this.stepWhile(this.vx, this.vy, function (obj) {
-        return !terrain.solidAtRect(obj.rect())
+        return !terrain.solidAtRect(obj.rect());
     });
     if (collision.y) {
         this.vy = 0;
     }
 
     // try climbing
-    if (collision.x && this.vx) {
+    if (collision.x && this.vx) {;
         var oldx = this.x;
         var oldy = this.y;
         this.x += this.vx < 0 ? -1 : 1;
@@ -85,6 +104,28 @@ Human.prototype.update = function () {
         }
     }
 
+};
+Human.prototype.hit = function () {
+    var b = new Blood({ x: this.x, y: this.y })
+    blood_list.push(b);
+};
+
+function Blood(options) {
+    options = options || {};
+    options.anchor = 'center';
+    jaws.Sprite.call(this, options);
+    this.animation = new jaws.Animation({
+        sprite_sheet: 'images/blood.png',
+        frame_size: [8,8],
+        frame_duration: 100,
+    });
+}
+inherits(Blood, jaws.Sprite);
+Blood.prototype.update = function () {
+    if (this.animation.atLastFrame()) {
+        this.dead = true;
+    }
+    this.setImage(this.animation.next())
 };
 
 var Game = function () {
@@ -163,8 +204,9 @@ var Game = function () {
         var collision = fish.stepWhile(fish.vx, fish.vy * fish.vdamp(), function (fish) {
            return !terrain.solidAtRect(fish.rect())
         });
-        if (jaws.pressed('x') && fish.digs > 0) {
-            if (collision.x || collision.y) {
+        if (jaws.pressed('x')) {
+            if (fish.digs == 0) console.log('tick');
+            else if (collision.x || collision.y) {
                 fish.dig();
                 fish.digs--;
                 if (fish.digs == 0) fish.digs_delay = fish.digs_delay_s;
@@ -188,9 +230,19 @@ var Game = function () {
             }
         }
 
+        var hit = false;
+        jaws.collide(fish, humans, function (fish, human) {
+            if (human.drowned) return;
+            human.hit(); 
+            hit = true;
+        });
+       if (hit) fish.vy -= 1;
+
         oxygen_label.text = Math.ceil(fish.oxygen/1000).toString();
         digs_label.text = Math.ceil(fish.digs_delay/1000).toString();
         jaws.update(humans);
+        jaws.update(blood_list);
+        removeDead(blood_list);
     };
 
     this.draw = function () {
@@ -200,6 +252,7 @@ var Game = function () {
             water.draw();
             terrain.draw();
             jaws.draw(humans);
+            jaws.draw(blood_list);
             var sign = fish.flipped ? -1 : 1;
             var x = fish.flipped ? 1 : 0;
             if (fish.vy != 0) {
@@ -222,6 +275,7 @@ jaws.onload = function () {
         'images/fish.png',
         'images/human.png',
         'images/dig_mask.png',
+        'images/blood.png',
     ]);
 
 
