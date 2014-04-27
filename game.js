@@ -1,7 +1,8 @@
 var fps = 30;
 var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list, kills_label,
     drowns_label, drill_sound, tick_sound, death_sound, jump_sound, splash_sound,
-    hit_sound, reload_sound, timer_sound, houses, msg_label, yum_sound, drown_sound;
+    hit_sound, reload_sound, timer_sound, houses, msg_label, yum_sound, drown_sound,
+    time_label, time, n_humans, left_label;
 
 function removeDead(objects) {
     for (var i in objects) {
@@ -28,7 +29,7 @@ function Fish(options) {
     this.digs = 0;
     this.max_digs = 20;
     this.digs_delay = 0;
-    this.digs_delay_s = 5000;
+    this.digs_delay_s = 2000;
     this.kills = 0;
     this.drowns = 0;
     this.rest_anim = new jaws.Animation({
@@ -204,7 +205,8 @@ function Human(options) {
     this.gravity = 0.5;
     this.max_vy = 7;
     this.max_climb = 2;
-    this.hp = 10;
+    // this.hp = 10;
+    this.hp = 5;
     this.sprite_sheet = new jaws.SpriteSheet({ image: 'images/human.png', frame_size: [8,16] })
 }
 inherits(Human, jaws.Sprite);
@@ -214,17 +216,17 @@ Human.prototype.die = function () {
     this.vy = 0;
     this.drowned = true;
     this.setAnchor('bottom_center')
-    var angle = this.flipped ? 270 : 90;
-    this.rotateTo(angle);
-    // this.house.human_limit++;
+    // var angle = this.flipped ? 270 : 90;
+    this.rotateTo(90);
+    this.house.human_limit++;
     this.house.humans_dead++;
 };
-Human.prototype.rect = function () {
-    if (!this.drowned)
-        return jaws.Sprite.prototype.rect.call(this);
-    else
-        return new jaws.Rect(this.x, this.y - this.width, this.height, this.width) 
-};
+// Human.prototype.rect = function () {
+//     if (!this.drowned)
+//         return jaws.Sprite.prototype.rect.call(this);
+//     else
+//         return new jaws.Rect(this.x, this.y - this.width, this.height, this.width) 
+// };
 Human.prototype.update = function () {
     this.vy += this.gravity;
 
@@ -276,7 +278,10 @@ Human.prototype.hit = function () {
         this.setImage(frames[frames.length - 1])
         this.die();
         fish.kills += 1;
-        yum_sound.play();
+        if (fish.kills % 5 == 0) {
+            fish.max_oxygen++;
+            yum_sound.play();
+        }
     }
 };
 
@@ -307,8 +312,9 @@ function House(options) {
     this.gravity = 0.5;
     this.max_vy = 7;
     this.time = 0;
-    this.spawn_time = 3000;
-    this.human_limit = 5;
+    this.spawn_time = 1500;
+    this.spawn_limit = 6;
+    this.human_limit = 3;
     this.humans_dead = 0;
 }
 inherits(House, jaws.Sprite);
@@ -319,6 +325,10 @@ House.prototype.spawn = function () {
     var r = Math.floor(Math.random() * (h.sprite_sheet.frames.length - 1));
     h.setImage(h.sprite_sheet.frames[r]);
     humans.push(h);
+};
+House.prototype.draw = function () {
+    jaws.Sprite.prototype.draw.call(this);
+    this.rect().draw();
 };
 House.prototype.update = function () {
     this.vy += this.gravity;
@@ -335,8 +345,9 @@ House.prototype.update = function () {
     this.time += 1000 / fps;
     if (this.time >= this.spawn_time) {
         this.time = 0;
-        if (this.human_limit) {
+        if (this.human_limit && this.spawn_limit) {
             this.spawn();
+            this.spawn_limit--;
             this.human_limit--;
         }
     }
@@ -361,26 +372,37 @@ var Setup = function () {
 var Game = function () {
 
     this.setup = function () {
+        time = 0;
+
         water = new jaws.Sprite({
             color: 'blue',
             x: 0,
-            y: jaws.height - 120,
+            y: jaws.height - 100,
             width: 2000,
-            height: 120,
+            height: 100,
         });
-        terrain = new jaws.PixelMap({ image: 'images/map4.png' })
-        fish = new Fish({ x: 400, y: jaws.height - 100 });
+        terrain = new jaws.PixelMap({ image: 'images/map5.png' })
+        fish = new Fish({ x: 700, y: jaws.height - 100 });
         viewport = new jaws.Viewport({ max_x: terrain.width, max_y: terrain.height });
+
         oxygen_label = new jaws.Text({ x: 5, y: 5 });
         digs_label = new jaws.Text({ x: 300, y: 5 });
-        kills_label = new jaws.Text({ x: 140, y: 5, color: 'DarkRed' });
-        drowns_label = new jaws.Text({ x: 160, y: 5, color: 'blue' });
+        kills_label = new jaws.Text({ x: 120, y: 5, color: 'DarkRed' });
+        drowns_label = new jaws.Text({ x: 150, y: 5, color: 'blue' });
+        left_label = new jaws.Text({ x: 180, y: 5 });
         msg_label = new jaws.Text({ x: 5, y: jaws.height - 20 });
+        time_label = new jaws.Text({ x : 270, y: jaws.height - 20 })
 
         humans = [];
         houses = [
-            new House({ x: 540, y: 50 }),
+            new House({ x: 583, y: 100 }),
+            new House({ x: 860, y: 100 }),
+            new House({ x: 1180, y: 70 }),
+            new House({ x: 180, y: 20 }),
+            new House({ x: 224, y: 120 }),
+            new House({ x: 1520, y: 100 }),
         ];
+        n_humans = houses[0].spawn_limit * houses.length;
         blood_list = [];
 
         drill_sound = jaws.assets.get(afile('sounds/drill'));
@@ -396,15 +418,24 @@ var Game = function () {
     };
 
     this.update = function () {
+        if (!fish.dead) time += 1000 / fps;
         fish.update();
-        oxygen_label.text = Math.ceil(fish.oxygen/1000).toString();
-        digs_label.text = Math.ceil(fish.digs_delay/1000).toString();
-        kills_label.text = fish.kills.toString();
-        drowns_label.text = fish.drowns.toString();
         jaws.update(houses);
         jaws.update(humans);
         jaws.update(blood_list);
         removeDead(blood_list);
+
+        oxygen_label.text = Math.ceil(fish.oxygen/1000).toString() + "/" + Math.ceil(fish.max_oxygen/1000);
+        digs_label.text = Math.ceil(fish.digs_delay/1000).toString();
+        kills_label.text = fish.kills.toString();
+        drowns_label.text = fish.drowns.toString();
+        left_label.text = (n_humans - fish.drowns - fish.kills).toString();
+
+        var minutes = Math.floor(time / 1000 / 60).toString()
+        if (minutes.length < 2) minutes = "0" + minutes;
+        var seconds = Math.floor(time / 1000 % 60).toString();
+        if (seconds.length < 2) seconds = "0" + seconds;
+        time_label.text = minutes + ":" + seconds;
     };
 
     this.draw = function () {
@@ -423,20 +454,24 @@ var Game = function () {
             }
             // fish.rect().draw();
         });
+
         oxygen_label.draw();
-        digs_label.draw();
+        if (fish.digs_delay) digs_label.draw();
         kills_label.draw();
         drowns_label.draw();
+        left_label.draw();
         msg_label.draw();
+        // time_label.draw();
     };
 };
 
 jaws.onload = function () {
     jaws.assets.add([
-        'images/map1.png',
-        'images/map2.png',
-        'images/map3.png',
-        'images/map4.png',
+        // 'images/map1.png',
+        // 'images/map2.png',
+        // 'images/map3.png',
+        // 'images/map4.png',
+        'images/map5.png',
         'images/fish.png',
         'images/fish_drilling.png',
         'images/human.png',
