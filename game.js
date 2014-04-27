@@ -1,6 +1,6 @@
 var fps = 30;
 var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list, kills_label,
-    drowns_label;
+    drowns_label, drill_sound, tick_sound, death_sound, jump_sound, splash_sound;
 
 function removeDead(objects) {
     for (var i in objects) {
@@ -17,7 +17,7 @@ function Fish(options) {
     jaws.Sprite.call(this, options);
     this.gravity = 0.5;
     this.jumpv = 4;
-    this.swimv = 2;
+    this.swimv = 1.5;
     this.vy = 0;
     this.max_vy = 6;
     this.min_vy = -10;
@@ -30,6 +30,21 @@ function Fish(options) {
     this.digs_delay_s = 5000;
     this.kills = 0;
     this.drowns = 0;
+    this.rest_anim = new jaws.Animation({
+        sprite_sheet: 'images/fish.png',
+        frame_size: [19,11],
+    })
+    this.dig_anim = new jaws.Animation({
+        sprite_sheet: 'images/fish_drilling.png',
+        frame_size: [19,11],
+        frame_duration: 100,
+        // on_end: function () {
+        //     console.log('anim finished');
+        //     fish.anim = fish.rest_anim;
+        // },
+    });
+    this.anim = this.rest_anim;
+    this.in_water = true;
 }
 inherits(Fish, jaws.Sprite);
 Fish.prototype.depth= function () {
@@ -78,6 +93,7 @@ Fish.prototype.update = function () {
         if (jaws.pressed('up') && !fish.jumping && !fish.depth()) {
             fish.vy -= fish.jumpv;
             fish.jumping = true;
+            jump_sound.play();
         }
         if (jaws.pressed('up') && fish.depth()) {
             fish.jumping = false;
@@ -117,11 +133,16 @@ Fish.prototype.update = function () {
 
         var collision = fish.move();
         if (jaws.pressed('x')) {
-            if (fish.digs == 0) console.log('tick');
-            else if (collision.x || collision.y) {
-                fish.dig();
+            if (fish.digs == 0)
+                tick_sound.play();
+            else {
+                drill_sound.play();
+                fish.anim = fish.dig_anim;
                 fish.digs--;
                 if (fish.digs == 0) fish.digs_delay = fish.digs_delay_s;
+                if (collision.x || collision.y) {
+                    fish.dig();
+                }
             }
         } else {
             if (fish.digs > fish.max_digs) fish.digs = fish.max_digs;
@@ -142,6 +163,14 @@ Fish.prototype.update = function () {
             }
         }
 
+        if (!fish.in_water && fish.inWater()) {
+            fish.in_water = true;
+            splash_sound.play();
+        }
+        if (fish.in_water && !fish.inWater()) {
+            fish.in_water = false;
+        }
+
         var hit = false;
         jaws.collide(fish, humans, function (fish, human) {
             if (human.drowned) return;
@@ -153,6 +182,7 @@ Fish.prototype.update = function () {
 Fish.prototype.die = function () {
     fish.dead = true;
     fish.rotateTo(180);
+    death_sound.play();
 };
 
 function Human(options) {
@@ -274,7 +304,7 @@ var Game = function () {
             height: 120,
         });
         terrain = new jaws.PixelMap({ image: 'images/map4.png' })
-        fish = new Fish({ x: 400, y: jaws.height - 110 });
+        fish = new Fish({ x: 400, y: jaws.height - 100 });
         viewport = new jaws.Viewport({ max_x: terrain.width, max_y: terrain.height });
         oxygen_label = new jaws.Text({ x: 5, y: 5 })
         digs_label = new jaws.Text({ x: 300, y: 5 })
@@ -287,6 +317,12 @@ var Game = function () {
             new Human({ x: 600, y: 50 }),
         ];
         blood_list = [];
+
+        drill_sound = jaws.assets.get(afile('sounds/drill'));
+        tick_sound = jaws.assets.get(afile('sounds/tick'));
+        death_sound = jaws.assets.get(afile('sounds/death'));
+        jump_sound = jaws.assets.get(afile('sounds/jump'));
+        splash_sound = jaws.assets.get(afile('sounds/splash'));
     };
 
     this.update = function () {
@@ -308,7 +344,11 @@ var Game = function () {
             terrain.draw();
             jaws.draw(humans);
             jaws.draw(blood_list);
+            fish.setImage(fish.anim.next());
             fish.draw();
+            if (fish.anim == fish.dig_anim && fish.anim.atLastFrame()) {
+                fish.anim = fish.rest_anim;
+            }
             // fish.rect().draw();
         });
         oxygen_label.draw();
@@ -325,9 +365,15 @@ jaws.onload = function () {
         'images/map3.png',
         'images/map4.png',
         'images/fish.png',
+        'images/fish_drilling.png',
         'images/human.png',
         'images/dig_mask.png',
         'images/blood.png',
+        afile('sounds/drill'),
+        afile('sounds/tick'),
+        afile('sounds/death'),
+        afile('sounds/jump'),
+        afile('sounds/splash'),
     ]);
 
 
