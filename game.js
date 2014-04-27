@@ -1,5 +1,6 @@
 var fps = 30;
-var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list;
+var terrain, water, fish, viewport, oxygen_label, digs_label, blood_list, kills_label,
+    drowns_label;
 
 function removeDead(objects) {
     for (var i in objects) {
@@ -27,6 +28,8 @@ function Fish(options) {
     this.max_digs = 20;
     this.digs_delay = 0;
     this.digs_delay_s = 5000;
+    this.kills = 0;
+    this.drowns = 0;
 }
 inherits(Fish, jaws.Sprite);
 Fish.prototype.depth= function () {
@@ -129,7 +132,7 @@ Fish.prototype.update = function () {
         }
 
         if (fish.inWater()) {
-            fish.oxygen += 2000 / fps;
+            fish.oxygen += 3000 / fps;
             if (fish.oxygen > fish.max_oxygen) fish.oxygen = fish.max_oxygen;
         } else {
             fish.oxygen -= 1000 / fps;
@@ -162,26 +165,42 @@ function Human(options) {
     this.gravity = 0.5;
     this.max_vy = 7;
     this.max_climb = 2;
+    this.hp = 10;
 }
 inherits(Human, jaws.Sprite);
 Human.prototype.depth = Fish.prototype.depth;
+Human.prototype.die = function () {
+    this.vx = 0;
+    this.drowned = true;
+    this.setAnchor('bottom_center')
+    this.rotateTo(90);
+};
+// Human.prototype.draw = function () {
+//     jaws.Sprite.prototype.draw.call(this);
+//     this.rect().draw();
+// };
+Human.prototype.rect = function () {
+    if (!this.drowned)
+        return jaws.Sprite.prototype.rect.call(this);
+    else
+        return new jaws.Rect(this.x, this.y - this.width, this.height, this.width) 
+};
 Human.prototype.update = function () {
     this.vy += this.gravity;
-
-    if (this.drowned) return;
-    if (this.depth() > 2) {
-        console.log("AAAAA!");
-        this.drowned = true;
-        this.setAnchor('bottom_center')
-        this.rotateTo(90);
-        return;
-    }
 
     var collision = this.stepWhile(this.vx, this.vy, function (obj) {
         return !terrain.solidAtRect(obj.rect());
     });
     if (collision.y) {
         this.vy = 0;
+    }
+
+    if (this.drowned) return;
+    if (this.depth() > 2) {
+        console.log("AAAAA!");
+        this.die();
+        fish.drowns += 1;
+        return;
     }
 
     // try climbing
@@ -209,6 +228,11 @@ Human.prototype.update = function () {
 Human.prototype.hit = function () {
     var b = new Blood({ x: this.x, y: this.y })
     blood_list.push(b);
+    this.hp -= 1;
+    if (this.hp == 0) {
+        this.die();
+        fish.kills += 1;
+    }
 };
 
 function Blood(options) {
@@ -254,6 +278,8 @@ var Game = function () {
         viewport = new jaws.Viewport({ max_x: terrain.width, max_y: terrain.height });
         oxygen_label = new jaws.Text({ x: 5, y: 5 })
         digs_label = new jaws.Text({ x: 300, y: 5 })
+        kills_label = new jaws.Text({ x: 140, y: 5, color: 'DarkRed' })
+        drowns_label = new jaws.Text({ x: 160, y: 5, color: 'blue' })
 
         humans = [
             new Human({ x: 500, y: 50 }),
@@ -267,6 +293,8 @@ var Game = function () {
         fish.update();
         oxygen_label.text = Math.ceil(fish.oxygen/1000).toString();
         digs_label.text = Math.ceil(fish.digs_delay/1000).toString();
+        kills_label.text = fish.kills.toString();
+        drowns_label.text = fish.drowns.toString();
         jaws.update(humans);
         jaws.update(blood_list);
         removeDead(blood_list);
@@ -285,6 +313,8 @@ var Game = function () {
         });
         oxygen_label.draw();
         digs_label.draw();
+        kills_label.draw();
+        drowns_label.draw();
     };
 };
 
