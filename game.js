@@ -433,7 +433,7 @@ var Game = function () {
         time = 0;
 
         water = new jaws.Sprite({
-            color: 'blue',
+            color: '#31a2f2',
             x: 0,
             y: jaws.height - 100,
             width: 2000,
@@ -445,8 +445,8 @@ var Game = function () {
 
         oxygen_label = new jaws.Text({ x: 5, y: 5 });
         digs_label = new jaws.Text({ x: 300, y: 5 });
-        kills_label = new jaws.Text({ x: 120, y: 5, color: 'DarkRed' });
-        drowns_label = new jaws.Text({ x: 150, y: 5, color: 'blue' });
+        kills_label = new jaws.Text({ x: 120, y: 5, color: '#be2633' });
+        drowns_label = new jaws.Text({ x: 150, y: 5, color: '#31a2f2' });
         left_label = new jaws.Text({ x: 180, y: 5 });
         msg_label = new jaws.Text({ x: 5, y: jaws.height - 20 });
         time_label = new jaws.Text({ x : 270, y: jaws.height - 20 })
